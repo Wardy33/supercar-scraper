@@ -25,36 +25,23 @@ def scrape_site(base_url, page_param, container_selector, title_selector, price_
     while True:
         url = base_url.format(page_num)
         html = fetch_html(url)
-        
-        # Save HTML for debugging
-        with open(f"debug_{source_name}_page_{page_num}.html", "w", encoding="utf-8") as f:
-            f.write(html)
-        
         soup = BeautifulSoup(html, "html.parser")
         cars = soup.select(container_selector)
-        print(f"Scraping {source_name} - Page {page_num}: Found {len(cars)} cars")
-        
-        if not cars or page_num > max_pages:
+        if not cars or page_num > max_pages:  # stop if no cars or exceeds max_pages
             break
-        
         for car in cars:
-            try:
-                title = car.select_one(title_selector)
-                price = car.select_one(price_selector)
-                mileage = car.select_one(mileage_selector)
-                if title and price:
-                    results.append({
-                        "source": source_name,
-                        "make_model": title.get_text(strip=True),
-                        "price": price.get_text(strip=True),
-                        "mileage": mileage.get_text(strip=True) if mileage else ""
-                    })
-            except Exception as e:
-                print(f"Error processing car entry: {e}")
-        
+            title = car.select_one(title_selector)
+            price = car.select_one(price_selector)
+            mileage = car.select_one(mileage_selector)
+            if title and price:
+                results.append({
+                    "source": source_name,
+                    "make_model": title.get_text(strip=True),
+                    "price": price.get_text(strip=True),
+                    "mileage": mileage.get_text(strip=True) if mileage else ""
+                })
         page_num += 1
         time.sleep(random.uniform(2, 5))
-    
     return results
 
 # -------------------------------

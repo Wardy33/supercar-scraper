@@ -4,6 +4,26 @@ from playwright.sync_api import sync_playwright
 import time, random, re
 
 # -------------------------------
+# List of supercar makes and models
+# -------------------------------
+supercars = {
+    "Ferrari": ["488", "F8", "812", "Portofino", "SF90"],
+    "Lamborghini": ["Aventador", "Huracan", "Urus", "Gallardo"],
+    "McLaren": ["720S", "765LT", "GT", "600LT", "P1"],
+    "Aston Martin": ["DB11", "Vantage", "DBS", "Valhalla"],
+    "Porsche": ["911 Turbo", "911 GT3", "911 GT2 RS", "Cayman GT4"],
+    "Bentley": ["Continental GT", "Flying Spur"],
+    "Audi": ["R8"],
+    "Jaguar": ["F-Type SVR"],
+    "Mercedes": ["AMG GT", "SLS"],
+    "BMW": ["i8"],
+    "Pagani": ["Huayra", "Zonda"],
+    "Koenigsegg": ["Jesko", "Regera"],
+    "Lotus": ["Evora", "Elise", "Emira"],
+    "Maserati": ["MC20"]
+}
+
+# -------------------------------
 # Fetch fully rendered HTML with scrolling
 # -------------------------------
 def fetch_html(url, container_selector):
@@ -12,12 +32,11 @@ def fetch_html(url, container_selector):
         page = browser.new_page()
         page.goto(url)
         try:
-            # Wait for the car listings container
             page.wait_for_selector(container_selector, timeout=15000)
         except:
             print(f"⚠️ Timeout waiting for container {container_selector} at {url}")
 
-        # Scroll to bottom to load lazy content
+        # Scroll to bottom to load all listings
         previous_height = 0
         while True:
             height = page.evaluate("document.body.scrollHeight")
@@ -32,33 +51,37 @@ def fetch_html(url, container_selector):
     return html
 
 # -------------------------------
-# Scrape AutoTrader
+# Scrape listings for one make/model
 # -------------------------------
-def scrape_autotrader(max_pages=3):
-    base_url = "https://www.autotrader.co.uk/car-search?postcode=SW1A1AA&include-delivery-option=on&keywords=supercar&page={}"
+def scrape_make_model(make, model, max_pages=5, postcode="SW1A1AA", radius=500):
+    base_url = ("https://www.autotrader.co.uk/car-search?"
+                "postcode={postcode}&radius={radius}&make={make}&model={model}&page={page}")
     container_selector = 'a[data-testid="search-listing-title"]'
-    all_results = []
+    results = []
 
-    for page_num in range(1, max_pages+1):
-        url = base_url.format(page_num)
-        print(f"Scraping AutoTrader page {page_num}: {url}")
+    for page_num in range(1, max_pages + 1):
+        url = base_url.format(postcode=postcode, radius=radius, make=make, model=model, page=page_num)
+        print(f"Scraping {make} {model}, page {page_num}: {url}")
         html = fetch_html(url, container_selector)
         soup = BeautifulSoup(html, "html.parser")
         cars = soup.select(container_selector)
         print(f"Found {len(cars)} cars on page {page_num}")
 
+        if not cars:
+            break
+
         for car in cars:
             try:
-                # Full text: "Bentley Continental6.0 GT 2dr, £13,795"
-                make_model = car.get_text(strip=True).split(",")[0]
-                # Price: extract from <span> inside <a>
+                # Extract make/model text
+                make_model_text = car.get_text(strip=True).split(",")[0]
+                # Extract price from <span> inside <a>
                 span = car.select_one("span")
                 price_text = span.get_text(strip=True) if span else ""
                 price_match = re.search(r"£([\d,]+)", price_text)
                 price = price_match.group(1) if price_match else None
 
-                all_results.append({
-                    "make_model": make_model,
+                results.append({
+                    "make_model": make_model_text,
                     "price": price
                 })
             except Exception as e:
@@ -66,7 +89,7 @@ def scrape_autotrader(max_pages=3):
 
         time.sleep(random.uniform(2, 4))
 
-    return all_results
+    return results
 
 # -------------------------------
 # Normalize data
@@ -90,10 +113,17 @@ def parse_entry(entry):
 # Main runner
 # -------------------------------
 if __name__ == "__main__":
-    data = scrape_autotrader(max_pages=3)  # Test with 3 pages
-    print(f"Total cars scraped: {len(data)}")
+    all_data = []
 
-    normalised = [parse_entry(entry) for entry in data]
+    for make, models in supercars.items():
+        for model in models:
+            data = scrape_make_model(make, model, max_pages=3)  # max_pages per model
+            all_data.extend(data)
+
+    print(f"Total cars scraped: {len(all_data)}")
+
+    # Normalize and save CSV
+    normalised = [parse_entry(entry) for entry in all_data]
     df = pd.DataFrame(normalised)
-    df.to_csv("autotrader_supercars.csv", index=False)
-    print(f"✅ Saved {len(df)} cars to autotrader_supercars.csv")
+    df.to_csv("supercars_autotrader.csv", index=False)
+    print(f"✅ Saved {len(df)} cars to supercars_autotrader.csv")

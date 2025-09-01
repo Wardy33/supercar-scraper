@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 import time, random, re
 
 # -------------------------------
-# List of supercar makes and models
+# Supercar makes/models
 # -------------------------------
 supercars = {
     "Ferrari": ["488", "F8", "812", "Portofino", "SF90"],
@@ -24,7 +24,7 @@ supercars = {
 }
 
 # -------------------------------
-# Fetch fully rendered HTML with scrolling
+# Fetch fully rendered HTML
 # -------------------------------
 def fetch_html(url, container_selector):
     with sync_playwright() as p:
@@ -36,7 +36,7 @@ def fetch_html(url, container_selector):
         except:
             print(f"⚠️ Timeout waiting for container {container_selector} at {url}")
 
-        # Scroll to bottom to load all listings
+        # Scroll to bottom to load all lazy-loaded content
         previous_height = 0
         while True:
             height = page.evaluate("document.body.scrollHeight")
@@ -51,9 +51,9 @@ def fetch_html(url, container_selector):
     return html
 
 # -------------------------------
-# Scrape listings for one make/model
+# Scrape one make/model
 # -------------------------------
-def scrape_make_model(make, model, max_pages=5, postcode="SW1A1AA", radius=500):
+def scrape_make_model(make, model, max_pages=3, postcode="SW1A1AA", radius=500):
     base_url = ("https://www.autotrader.co.uk/car-search?"
                 "postcode={postcode}&radius={radius}&make={make}&model={model}&page={page}")
     container_selector = 'a[data-testid="search-listing-title"]'
@@ -72,9 +72,7 @@ def scrape_make_model(make, model, max_pages=5, postcode="SW1A1AA", radius=500):
 
         for car in cars:
             try:
-                # Extract make/model text
                 make_model_text = car.get_text(strip=True).split(",")[0]
-                # Extract price from <span> inside <a>
                 span = car.select_one("span")
                 price_text = span.get_text(strip=True) if span else ""
                 price_match = re.search(r"£([\d,]+)", price_text)
@@ -117,13 +115,13 @@ if __name__ == "__main__":
 
     for make, models in supercars.items():
         for model in models:
-            data = scrape_make_model(make, model, max_pages=3)  # max_pages per model
+            data = scrape_make_model(make, model, max_pages=3)  # adjust pages as needed
             all_data.extend(data)
 
     print(f"Total cars scraped: {len(all_data)}")
 
-    # Normalize and save CSV
+    # Normalize and save CSV as 'supercars.csv'
     normalised = [parse_entry(entry) for entry in all_data]
     df = pd.DataFrame(normalised)
-    df.to_csv("supercars_autotrader.csv", index=False)
-    print(f"✅ Saved {len(df)} cars to supercars_autotrader.csv")
+    df.to_csv("supercars.csv", index=False)
+    print(f"✅ Saved {len(df)} cars to supercars.csv")

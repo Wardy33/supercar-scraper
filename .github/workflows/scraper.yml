@@ -1,19 +1,20 @@
 name: Supercar Scraper
 
-# When the workflow runs
 on:
   schedule:
-    - cron: "0 6 * * *"  # Daily at 6am UTC
-  workflow_dispatch:      # Allows manual run
+    - cron: "0 6 * * *"  # daily at 6am UTC
+  workflow_dispatch:      # manual run
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repo
-      - name: Checkout repository
+      # Step 1: Checkout repository (fetch full history)
+      - name: Checkout repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       # Step 2: Set up Python
       - name: Set up Python 3.10
@@ -28,15 +29,26 @@ jobs:
           pip install -r requirements.txt
           playwright install chromium
 
-      # Step 4: Run the scraper
+      # Step 4: Run scraper
       - name: Run scraper
         run: python scraper.py
 
-      # Step 5: Commit and push updated CSV using GITHUB_TOKEN
+      # Step 5: List files for debugging
+      - name: List files
+        run: ls -la
+
+      # Step 6: Commit and push CSV using GITHUB_TOKEN
       - name: Commit results
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add supercars.csv
-          git commit -m "Update supercar data" || echo "No changes"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+          git commit -m "Update supercar data" || echo "No changes to commit"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+
+      # Step 7: Upload CSV as artifact
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: supercars-data
+          path: supercars.csv

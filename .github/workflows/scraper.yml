@@ -3,19 +3,20 @@ name: Supercar Scraper
 on:
   schedule:
     - cron: "0 6 * * *"  # daily at 6am UTC
-  workflow_dispatch:      # manual run
+  workflow_dispatch:      # allows manual run
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository with full history and credentials
+      # Step 1: Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: true  # allows push using GITHUB_TOKEN
+          persist-credentials: true
+          ref: main  # change if your default branch is master
 
       # Step 2: Set up Python
       - name: Set up Python 3.10
@@ -34,20 +35,11 @@ jobs:
       - name: Run scraper
         run: python scraper.py
 
-      # Step 5: List files for debugging
+      # Step 5: Debug - list files
       - name: List files
         run: ls -la
 
-      # Step 6: Commit and push CSV safely
-      - name: Commit and push CSV
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add supercars.csv
-          git diff-index --quiet HEAD || git commit -m "Update supercar data"
-          git push
-
-      # Step 7: Upload CSV as artifact
+      # Step 6: Upload CSV as artifact
       - name: Upload CSV artifact
         uses: actions/upload-artifact@v4
         with:

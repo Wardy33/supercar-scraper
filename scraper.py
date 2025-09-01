@@ -6,13 +6,13 @@ import time, random, re
 # -------------------------------
 # Fetch fully rendered HTML with scrolling
 # -------------------------------
-def fetch_html(url, container_selector, wait_time=5000):
+def fetch_html(url, container_selector):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(url)
         try:
-            # Wait for main container
+            # Wait for the car listings container
             page.wait_for_selector(container_selector, timeout=15000)
         except:
             print(f"⚠️ Timeout waiting for container {container_selector} at {url}")
@@ -32,55 +32,41 @@ def fetch_html(url, container_selector, wait_time=5000):
     return html
 
 # -------------------------------
-# Scraper function
+# Scrape AutoTrader
 # -------------------------------
-def scrape_site(base_url, container_selector, title_selector, price_selector, mileage_selector, source_name, max_pages=5):
-    page_num = 1
-    results = []
-    while page_num <= max_pages:
+def scrape_autotrader(max_pages=3):
+    base_url = "https://www.autotrader.co.uk/car-search?postcode=SW1A1AA&include-delivery-option=on&keywords=supercar&page={}"
+    container_selector = 'a[data-testid="search-listing-title"]'
+    all_results = []
+
+    for page_num in range(1, max_pages+1):
         url = base_url.format(page_num)
-        print(f"Scraping {source_name} page {page_num}: {url}")
+        print(f"Scraping AutoTrader page {page_num}: {url}")
         html = fetch_html(url, container_selector)
         soup = BeautifulSoup(html, "html.parser")
         cars = soup.select(container_selector)
-        print(f"Found {len(cars)} cars on page {page_num} of {source_name}")
-
-        if not cars:
-            break
+        print(f"Found {len(cars)} cars on page {page_num}")
 
         for car in cars:
             try:
-                title = car.select_one(title_selector)
-                price = car.select_one(price_selector)
-                mileage = car.select_one(mileage_selector)
-                if title and price:
-                    results.append({
-                        "source": source_name,
-                        "make_model": title.get_text(strip=True),
-                        "price": price.get_text(strip=True),
-                        "mileage": mileage.get_text(strip=True) if mileage else ""
-                    })
+                # Full text: "Bentley Continental6.0 GT 2dr, £13,795"
+                make_model = car.get_text(strip=True).split(",")[0]
+                # Price: extract from <span> inside <a>
+                span = car.select_one("span")
+                price_text = span.get_text(strip=True) if span else ""
+                price_match = re.search(r"£([\d,]+)", price_text)
+                price = price_match.group(1) if price_match else None
+
+                all_results.append({
+                    "make_model": make_model,
+                    "price": price
+                })
             except Exception as e:
                 print(f"Error parsing car: {e}")
-        page_num += 1
-        time.sleep(random.uniform(2, 5))
-    return results
 
-# -------------------------------
-# Individual site scrapers
-# -------------------------------
-def scrape_autotrader():
-    return scrape_site(
-        "https://www.autotrader.co.uk/car-search?postcode=SW1A1AA&include-delivery-option=on&keywords=supercar&page={}",
-        ".product-card",
-        ".product-card-details__title",
-        ".product-card-pricing__price",
-        ".product-card-details__mileage",
-        "AutoTrader",
-        max_pages=10
-    )
+        time.sleep(random.uniform(2, 4))
 
-# Add other sites similarly, updating container_selector, title_selector, etc.
+    return all_results
 
 # -------------------------------
 # Normalize data
@@ -89,42 +75,25 @@ def parse_entry(entry):
     text = entry["make_model"]
     year_match = re.search(r"\b(19|20)\d{2}\b", text)
     year = year_match.group(0) if year_match else ""
-    price_clean = re.sub(r"[^\d]", "", entry["price"])
-    mileage_clean = re.sub(r"[^\d]", "", entry["mileage"]) if entry["mileage"] else ""
     parts = text.split()
-    make = parts[1] if year else parts[0]
-    model = " ".join(parts[2:]) if year else " ".join(parts[1:])
+    make = parts[0] if not year else parts[1]
+    model = " ".join(parts[1:]) if not year else " ".join(parts[2:])
+    price_clean = re.sub(r"[^\d]", "", entry["price"]) if entry["price"] else None
     return {
-        "source": entry["source"],
         "year": year,
         "make": make,
         "model": model,
-        "price": int(price_clean) if price_clean.isdigit() else None,
-        "mileage": int(mileage_clean) if mileage_clean.isdigit() else None
+        "price": int(price_clean) if price_clean and price_clean.isdigit() else None
     }
 
 # -------------------------------
 # Main runner
 # -------------------------------
 if __name__ == "__main__":
-    scrapers = [
-        scrape_autotrader,
-        # add other site functions here like scrape_amari, scrape_romans, etc.
-    ]
+    data = scrape_autotrader(max_pages=3)  # Test with 3 pages
+    print(f"Total cars scraped: {len(data)}")
 
-    all_data = []
-    for scraper in scrapers:
-        try:
-            print(f"Starting scraper: {scraper.__name__}")
-            data = scraper()
-            all_data.extend(data)
-        except Exception as e:
-            print(f"Error scraping {scraper.__name__}: {e}")
-
-    print(f"Total cars scraped: {len(all_data)}")
-
-    # Normalize and save CSV
-    normalised = [parse_entry(entry) for entry in all_data]
+    normalised = [parse_entry(entry) for entry in data]
     df = pd.DataFrame(normalised)
-    df.to_csv("supercars.csv", index=False)
-    print(f"✅ Scraped {len(df)} cars. Saved to supercars.csv")
+    df.to_csv("autotrader_supercars.csv", index=False)
+    print(f"✅ Saved {len(df)} cars to autotrader_supercars.csv")

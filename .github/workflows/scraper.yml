@@ -10,11 +10,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository (fetch full history)
-      - name: Checkout repo
+      # Step 1: Checkout repository with full history and credentials
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true  # allows push using GITHUB_TOKEN
 
       # Step 2: Set up Python
       - name: Set up Python 3.10
@@ -37,16 +38,16 @@ jobs:
       - name: List files
         run: ls -la
 
-      # Step 6: Commit and push CSV using GITHUB_TOKEN
-      - name: Commit results
+      # Step 6: Commit and push CSV safely
+      - name: Commit and push CSV
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add supercars.csv
-          git commit -m "Update supercar data" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+          git diff-index --quiet HEAD || git commit -m "Update supercar data"
+          git push
 
-      # Step 7: Upload CSV as artifact using v4
+      # Step 7: Upload CSV as artifact
       - name: Upload CSV artifact
         uses: actions/upload-artifact@v4
         with:

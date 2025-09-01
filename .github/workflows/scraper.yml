@@ -12,7 +12,7 @@ jobs:
     steps:
       # Step 1: Checkout repository (fetch full history)
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -46,9 +46,9 @@ jobs:
           git commit -m "Update supercar data" || echo "No changes to commit"
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
 
-      # Step 7: Upload CSV as artifact
+      # Step 7: Upload CSV as artifact using v4
       - name: Upload CSV artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: supercars-data
           path: supercars.csv

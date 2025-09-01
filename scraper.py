@@ -6,51 +6,62 @@ import time, random, re
 # -------------------------------
 # HTML fetcher with Playwright
 # -------------------------------
-def fetch_html(url, wait=5000):
+def fetch_html(url, container_selector, wait_time=5000):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(url)
-        page.wait_for_timeout(wait)
+        try:
+            # Wait until the main container is loaded
+            page.wait_for_selector(container_selector, timeout=15000)
+        except:
+            print(f"⚠️ Timeout waiting for container {container_selector} at {url}")
+        # Scroll to bottom to load all items
+        page.evaluate("window.scrollBy(0, document.body.scrollHeight);")
+        time.sleep(wait_time/1000)
         html = page.content()
         browser.close()
     return html
 
 # -------------------------------
-# Scraper Functions (with pagination)
+# Scraper Functions
 # -------------------------------
-def scrape_site(base_url, page_param, container_selector, title_selector, price_selector, mileage_selector, source_name, max_pages=10):
+def scrape_site(base_url, container_selector, title_selector, price_selector, mileage_selector, source_name, max_pages=5):
     page_num = 1
     results = []
-    while True:
+    while page_num <= max_pages:
         url = base_url.format(page_num)
-        html = fetch_html(url)
+        print(f"Scraping {source_name} page {page_num}: {url}")
+        html = fetch_html(url, container_selector)
         soup = BeautifulSoup(html, "html.parser")
         cars = soup.select(container_selector)
-        if not cars or page_num > max_pages:  # stop if no cars or exceeds max_pages
+        print(f"Found {len(cars)} cars on page {page_num} of {source_name}")
+        if not cars:
             break
         for car in cars:
-            title = car.select_one(title_selector)
-            price = car.select_one(price_selector)
-            mileage = car.select_one(mileage_selector)
-            if title and price:
-                results.append({
-                    "source": source_name,
-                    "make_model": title.get_text(strip=True),
-                    "price": price.get_text(strip=True),
-                    "mileage": mileage.get_text(strip=True) if mileage else ""
-                })
+            try:
+                title = car.select_one(title_selector)
+                price = car.select_one(price_selector)
+                mileage = car.select_one(mileage_selector)
+                if title and price:
+                    results.append({
+                        "source": source_name,
+                        "make_model": title.get_text(strip=True),
+                        "price": price.get_text(strip=True),
+                        "mileage": mileage.get_text(strip=True) if mileage else ""
+                    })
+            except Exception as e:
+                print(f"Error parsing car: {e}")
         page_num += 1
         time.sleep(random.uniform(2, 5))
     return results
 
 # -------------------------------
-# Individual Site Scrapers
+# Individual Scraper Sites
 # -------------------------------
 def scrape_amari():
     return scrape_site(
         "https://www.amarisupercars.com/stock/?pg={}",
-        "pg",
         ".vehicle-card",
         ".vehicle-card__title",
         ".vehicle-card__price",
@@ -61,7 +72,6 @@ def scrape_amari():
 def scrape_romans():
     return scrape_site(
         "https://www.romansinternational.com/used-cars/page/{}/",
-        "page",
         ".stocklist-vehicle",
         ".vehicle-title",
         ".vehicle-price",
@@ -72,7 +82,6 @@ def scrape_romans():
 def scrape_hr_owen():
     return scrape_site(
         "https://www.hrowen.co.uk/used-cars/page/{}/",
-        "page",
         ".vehicle",
         ".vehicle-title",
         ".vehicle-price",
@@ -83,7 +92,6 @@ def scrape_hr_owen():
 def scrape_redline():
     return scrape_site(
         "https://www.redlinespecialistcars.co.uk/used-cars?page={}",
-        "page",
         ".vehicle-listing",
         ".vehicle-title",
         ".vehicle-price",
@@ -94,7 +102,6 @@ def scrape_redline():
 def scrape_gve():
     return scrape_site(
         "https://gvelondon.com/used-cars/page/{}/",
-        "page",
         ".car-box",
         ".car-title",
         ".car-price",
@@ -105,7 +112,6 @@ def scrape_gve():
 def scrape_tom_hartley():
     return scrape_site(
         "https://www.tomhartley.com/used/page/{}/",
-        "page",
         ".vehicle-card",
         ".vehicle-card__title",
         ".vehicle-card__price",
@@ -116,7 +122,6 @@ def scrape_tom_hartley():
 def scrape_clive_sutton():
     return scrape_site(
         "https://www.clivesutton.co.uk/stocklist/page/{}/",
-        "page",
         ".stocklist-item",
         ".stocklist-item__title",
         ".stocklist-item__price",
@@ -127,7 +132,6 @@ def scrape_clive_sutton():
 def scrape_joe_macari():
     return scrape_site(
         "https://www.joemacari.com/used-cars/page/{}/",
-        "page",
         ".car-card",
         ".car-card__title",
         ".car-card__price",
@@ -138,29 +142,27 @@ def scrape_joe_macari():
 def scrape_pistonheads():
     return scrape_site(
         "https://www.pistonheads.com/buy/search?category=supercars&page={}",
-        "page",
         ".phui-picture-card",
         ".phui-picture-card__title",
         ".phui-picture-card__price",
         ".phui-picture-card__mileage",
         "PistonHeads",
-        max_pages=20
+        max_pages=10
     )
 
 def scrape_autotrader():
     return scrape_site(
         "https://www.autotrader.co.uk/car-search?postcode=SW1A1AA&include-delivery-option=on&keywords=supercar&page={}",
-        "page",
-        ".product-card-details",
+        ".product-card",
         ".product-card-details__title",
         ".product-card-pricing__price",
         ".product-card-details__mileage",
         "AutoTrader",
-        max_pages=20
+        max_pages=10
     )
 
 # -------------------------------
-# Normalise Data
+# Normalize Data
 # -------------------------------
 def parse_entry(entry):
     text = entry["make_model"]
@@ -193,14 +195,15 @@ if __name__ == "__main__":
     all_data = []
     for scraper in scrapers:
         try:
-            print(f"Scraping {scraper.__name__} ...")
+            print(f"Starting scraper: {scraper.__name__}")
             data = scraper()
             all_data.extend(data)
-            time.sleep(random.uniform(2,5))
         except Exception as e:
-            print(f"❌ Error scraping {scraper.__name__}: {e}")
+            print(f"Error scraping {scraper.__name__}: {e}")
 
-    # Normalise and save
+    print(f"Total cars scraped: {len(all_data)}")
+
+    # Normalize and save CSV
     normalised = [parse_entry(entry) for entry in all_data]
     df = pd.DataFrame(normalised)
     df.to_csv("supercars.csv", index=False)
